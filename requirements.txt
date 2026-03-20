@@ -2,5 +2,3 @@ streamlit
 pandas
 numpy
 requests
-scikit-learn
-aiohttp==3.9.0
