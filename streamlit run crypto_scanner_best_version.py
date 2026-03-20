@@ -6,17 +6,16 @@ import asyncio
 import time
 
 st.set_page_config(layout="wide")
-st.title("Crypto Scanner بالعربي 🔍 - النسخة النهائية مع CryptoCompare")
+st.title("Crypto Scanner بالعربي 🔍 - النسخة التفصيلية لكل شرط")
 
 # ==============================
 # إعدادات
 # ==============================
 MIN_LIQUIDITY = 5_000_000
 RSI_THRESHOLD = 30
-TOP_LIMIT = 300
 
 # ==============================
-# جلب قائمة العملات من CoinGecko (رموز العملات فقط)
+# جلب قائمة العملات
 # ==============================
 async def fetch_market_list():
     url = "https://api.coingecko.com/api/v3/coins/markets"
@@ -72,7 +71,7 @@ def calculate_support(df, period=14):
     return df["close"].tail(period).min()
 
 # ==============================
-# فلترة كل العملات حسب الشروط
+# فلترة العملات وعرض كل شرط
 # ==============================
 async def process_coin(session, row):
     try:
@@ -85,23 +84,28 @@ async def process_coin(session, row):
         rsi = ohlc["rsi"].iloc[-1]
         support = calculate_support(ohlc)
 
-        liquidity_ok = row.get("total_volume",0) >= MIN_LIQUIDITY
-        buy_volume = row.get("total_volume",0) * 0.6
-        sell_volume = row.get("total_volume",0) * 0.4
+        liquidity = row.get("total_volume",0)
+        buy_volume = liquidity * 0.6
+        sell_volume = liquidity * 0.4
+
+        liquidity_ok = liquidity >= MIN_LIQUIDITY
         buy_vs_sell_ok = buy_volume > sell_volume
         rsi_ok = rsi < RSI_THRESHOLD
         support_ok = row.get("current_price",0) <= support
 
-        if all([liquidity_ok, buy_vs_sell_ok, rsi_ok, support_ok]):
-            return {
-                "Name": row.get("name","N/A"),
-                "Symbol": symbol.upper(),
-                "Price": row.get("current_price",0),
-                "Liquidity": row.get("total_volume",0),
-                "RSI": rsi,
-                "Support": support,
-            }
-        return None
+        return {
+            "Name": row.get("name","N/A"),
+            "Symbol": symbol.upper(),
+            "Price": row.get("current_price",0),
+            "Liquidity": liquidity,
+            "Liquidity_OK": liquidity_ok,
+            "Buy>Sell_OK": buy_vs_sell_ok,
+            "RSI": round(rsi,2),
+            "RSI_OK": rsi_ok,
+            "Support": round(support,4),
+            "Support_OK": support_ok,
+            "All_OK": all([liquidity_ok, buy_vs_sell_ok, rsi_ok, support_ok])
+        }
     except:
         return None
 
@@ -119,10 +123,10 @@ async def process_all_coins(df_market):
 # واجهة Streamlit
 # ==============================
 if st.button("تحديث البيانات / Refresh Data"):
-    st.info("جاري جلب بيانات السوق وحساب كل الشروط بدقة... قد يستغرق دقيقة أو أكثر")
+    st.info("جاري جلب بيانات السوق وحساب كل الشروط لكل عملة...")
     start_time = time.time()
     df_market = asyncio.run(fetch_market_list())
     filtered = asyncio.run(process_all_coins(df_market))
-    st.subheader(f"عدد العملات اللي استوفت كل الشروط: {len(filtered)}")
-    st.dataframe(filtered)
+    st.subheader(f"عدد العملات اللي استوفت كل الشروط: {filtered['All_OK'].sum()}")
+    st.dataframe(filtered.sort_values("All_OK", ascending=False))
     st.success(f"تم التحديث في {time.time()-start_time:.2f} ثانية")
